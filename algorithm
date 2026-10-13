@@ -1,0 +1,55 @@
+Algorithm: Biomedical Equipment Maintenance and Fault Management System
+
+1. Start the program.
+2. Load existing equipment records from the data file.
+3. Display the menu containing registration, listing, searching, fault management, status updates, maintenance scheduling, priority sorting, and report generation.
+4. Read the user's menu choice.
+5. Perform the selected operation:
+
+   A. Register Equipment
+   - Read equipment ID, name, department, status, fault description, and maintenance date.
+   - Check that the ID is unique and the date is valid.
+   - Store the equipment details in the array.
+   - Save the records to the data file.
+
+   B. List Equipment
+   - Traverse the equipment array using a loop.
+   - Display all equipment details and maintenance status.
+
+   C. Search Equipment
+   - Accept an equipment ID or name.
+   - Search the array using a linear search.
+   - Display matching records or a not-found message.
+
+   D. Manage Faults
+   - Search for equipment using its unique ID.
+   - Record the fault description and update the fault status.
+   - Mark equipment with a newly recorded fault as out of service.
+   - Save the updated record.
+
+   E. Update Equipment Status
+   - Find the equipment by ID.
+   - Update its operational status.
+   - Mark its fault as resolved when it is explicitly returned to operational status.
+   - Save the changes.
+
+   F. Schedule Maintenance
+   - Find the equipment by ID.
+   - Accept and validate the next maintenance date.
+   - Update and save the schedule.
+
+   G. Sort by Priority
+   - Calculate a priority score for each equipment record.
+   - Assign higher scores to overdue maintenance, open faults, and out-of-service status.
+   - Sort the records in descending priority using bubble sort.
+   - Display the sorted records.
+
+   H. Generate Reports
+   - Traverse all equipment records.
+   - Count overdue maintenance, open faults, and out-of-service equipment.
+   - Display the maintenance and fault report.
+
+6. Return to the menu unless the user chooses Exit.
+7. Terminate the program.
+
+End.
