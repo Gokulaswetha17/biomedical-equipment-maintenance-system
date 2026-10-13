@@ -1,0 +1,419 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define MAX 200
+#define FILE_NAME "equipment.dat"
+
+typedef struct {
+    int id;
+    char name[50];
+    char department[40];
+    char status[25];
+    char fault[150];
+    int maintenanceDate;  // YYYYMMDD
+    int faultOpen;        // 1 = open, 0 = resolved
+} Equipment;
+
+Equipment equipment[MAX];
+int count = 0;
+
+/* Read a complete line */
+void readText(const char *prompt, char *text, int size) {
+    printf("%s", prompt);
+
+    if (fgets(text, size, stdin) == NULL) {
+        text[0] = '\0';
+        return;
+    }
+
+    text[strcspn(text, "\n")] = '\0';
+}
+
+/* Read an integer safely */
+int readNumber(const char *prompt) {
+    char input[50], extra;
+    int number;
+
+    while (1) {
+        readText(prompt, input, sizeof(input));
+
+        if (sscanf(input, " %d %c", &number, &extra) == 1)
+            return number;
+
+        printf("Enter a valid integer.\n");
+    }
+}
+
+/* Current date as YYYYMMDD */
+int todayDate(void) {
+    time_t now = time(NULL);
+    struct tm *date = localtime(&now);
+
+    if (date == NULL)
+        return 0;
+
+    return (date->tm_year + 1900) * 10000
+         + (date->tm_mon + 1) * 100
+         + date->tm_mday;
+}
+
+/* Validate a calendar date entered as YYYYMMDD */
+int validDate(int value) {
+    int y = value / 10000;
+    int m = (value / 100) % 100;
+    int d = value % 100;
+    int days[] = {0,31,28,31,30,31,30,31,31,30,31,30,31};
+
+    if (y < 1900 || m < 1 || m > 12)
+        return 0;
+
+    int leap = (y % 400 == 0) ||
+               (y % 4 == 0 && y % 100 != 0);
+
+    if (leap)
+        days[2] = 29;
+
+    return d >= 1 && d <= days[m];
+}
+
+/* Save all records to a binary file */
+int saveRecords(void) {
+    FILE *fp = fopen(FILE_NAME, "wb");
+
+    if (fp == NULL) {
+        printf("Error saving records.\n");
+        return 0;
+    }
+
+    int written = (int)fwrite(
+        equipment, sizeof(Equipment), count, fp
+    );
+
+    int success = (written == count && fclose(fp) == 0);
+
+    if (!success)
+        printf("Warning: records may not have saved completely.\n");
+
+    return success;
+}
+
+/* Load records when the program starts */
+void loadRecords(void) {
+    FILE *fp = fopen(FILE_NAME, "rb");
+
+    if (fp == NULL)
+        return;
+
+    while (count < MAX &&
+           fread(&equipment[count], sizeof(Equipment), 1, fp) == 1) {
+        count++;
+    }
+
+    fclose(fp);
+}
+
+/* Find equipment by unique ID; pointer return */
+Equipment *findByID(int id) {
+    for (int i = 0; i < count; i++) {
+        if (equipment[i].id == id)
+            return &equipment[i];
+    }
+
+    return NULL;
+}
+
+/* Register new equipment */
+void registerEquipment(void) {
+    if (count >= MAX) {
+        printf("Equipment storage is full.\n");
+        return;
+    }
+
+    Equipment e = {0};
+
+    e.id = readNumber("Enter unique equipment ID: ");
+
+    if (e.id <= 0 || findByID(e.id) != NULL) {
+        printf("Invalid or duplicate equipment ID.\n");
+        return;
+    }
+
+    readText("Equipment name: ", e.name, sizeof(e.name));
+    readText("Department: ", e.department, sizeof(e.department));
+
+    printf("1. Operational\n");
+    printf("2. Under Maintenance\n");
+    printf("3. Out of Service\n");
+
+    int choice = readNumber("Select status: ");
+
+    if (choice == 1)
+        strcpy(e.status, "Operational");
+    else if (choice == 2)
+        strcpy(e.status, "Under Maintenance");
+    else if (choice == 3)
+        strcpy(e.status, "Out of Service");
+    else {
+        printf("Invalid status.\n");
+        return;
+    }
+
+    readText("Fault description (or None): ",
+             e.fault, sizeof(e.fault));
+
+    e.faultOpen = strcmp(e.fault, "None") != 0 &&
+                  e.fault[0] != '\0';
+
+    do {
+        e.maintenanceDate = readNumber(
+            "Next maintenance date (YYYYMMDD): "
+        );
+
+        if (!validDate(e.maintenanceDate))
+            printf("Enter a valid calendar date.\n");
+
+    } while (!validDate(e.maintenanceDate));
+
+    equipment[count++] = e;
+
+    if (saveRecords())
+        printf("Equipment registered successfully.\n");
+}
+
+/* Display one record */
+void displayEquipment(const Equipment *e) {
+    printf("\nID: %d\n", e->id);
+    printf("Name: %s\n", e->name);
+    printf("Department: %s\n", e->department);
+    printf("Status: %s\n", e->status);
+    printf("Fault: %s\n", e->fault);
+    printf("Fault status: %s\n",
+           e->faultOpen ? "Open" : "Resolved");
+    printf("Maintenance date: %08d\n", e->maintenanceDate);
+
+    if (e->maintenanceDate < todayDate())
+        printf("Maintenance: OVERDUE\n");
+    else
+        printf("Maintenance: Not overdue\n");
+}
+
+/* List all equipment */
+void listEquipment(void) {
+    if (count == 0) {
+        printf("No equipment records found.\n");
+        return;
+    }
+
+    for (int i = 0; i < count; i++)
+        displayEquipment(&equipment[i]);
+}
+
+/* Search by ID or partial equipment name */
+void searchEquipment(void) {
+    char query[50];
+    int found = 0;
+
+    readText("Enter equipment ID or name: ",
+             query, sizeof(query));
+
+    char *end;
+    long id = strtol(query, &end, 10);
+    int isID = query[0] != '\0' && *end == '\0';
+
+    for (int i = 0; i < count; i++) {
+        if ((isID && id == equipment[i].id) ||
+            (!isID && strstr(equipment[i].name, query) != NULL)) {
+            displayEquipment(&equipment[i]);
+            found = 1;
+        }
+    }
+
+    if (!found)
+        printf("No matching equipment found.\n");
+}
+
+/* Record or update a fault */
+void updateFault(void) {
+    int id = readNumber("Enter equipment ID: ");
+    Equipment *e = findByID(id);
+
+    if (e == NULL) {
+        printf("Equipment not found.\n");
+        return;
+    }
+
+    readText("Enter current fault description: ",
+             e->fault, sizeof(e->fault));
+
+    e->faultOpen = e->fault[0] != '\0' &&
+                   strcmp(e->fault, "None") != 0;
+
+    if (e->faultOpen) {
+        strcpy(e->status, "Out of Service");
+        printf("Fault recorded. Equipment marked Out of Service.\n");
+    } else {
+        printf("No active fault recorded.\n");
+    }
+
+    saveRecords();
+}
+
+/* Update status and mark a fault resolved */
+void updateStatus(void) {
+    int id = readNumber("Enter equipment ID: ");
+    Equipment *e = findByID(id);
+
+    if (e == NULL) {
+        printf("Equipment not found.\n");
+        return;
+    }
+
+    printf("1. Operational\n");
+    printf("2. Under Maintenance\n");
+    printf("3. Out of Service\n");
+
+    int choice = readNumber("New status: ");
+
+    if (choice == 1) {
+        strcpy(e->status, "Operational");
+        e->faultOpen = 0;
+        strcpy(e->fault, "None");
+    } else if (choice == 2) {
+        strcpy(e->status, "Under Maintenance");
+    } else if (choice == 3) {
+        strcpy(e->status, "Out of Service");
+    } else {
+        printf("Invalid status.\n");
+        return;
+    }
+
+    saveRecords();
+    printf("Status updated.\n");
+}
+
+/* Update the next maintenance date */
+void scheduleMaintenance(void) {
+    int id = readNumber("Enter equipment ID: ");
+    Equipment *e = findByID(id);
+
+    if (e == NULL) {
+        printf("Equipment not found.\n");
+        return;
+    }
+
+    int date;
+
+    do {
+        date = readNumber("New maintenance date (YYYYMMDD): ");
+
+        if (!validDate(date))
+            printf("Enter a valid calendar date.\n");
+
+    } while (!validDate(date));
+
+    e->maintenanceDate = date;
+
+    if (saveRecords())
+        printf("Maintenance schedule updated.\n");
+}
+
+/* Priority: overdue + open fault + out of service */
+int priorityScore(const Equipment *e) {
+    int score = 0;
+
+    if (e->maintenanceDate < todayDate())
+        score += 4;
+
+    if (e->faultOpen)
+        score += 2;
+
+    if (strcmp(e->status, "Out of Service") == 0)
+        score += 1;
+
+    return score;
+}
+
+/* Sort records by descending priority using bubble sort */
+void sortByPriority(void) {
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = 0; j < count - i - 1; j++) {
+            if (priorityScore(&equipment[j]) <
+                priorityScore(&equipment[j + 1])) {
+
+                Equipment temp = equipment[j];
+                equipment[j] = equipment[j + 1];
+                equipment[j + 1] = temp;
+            }
+        }
+    }
+
+    printf("\nEquipment sorted by priority:\n");
+    listEquipment();
+}
+
+/* Generate maintenance and fault reports */
+void generateReports(void) {
+    int overdue = 0, faults = 0, outOfService = 0;
+
+    printf("\n===== MAINTENANCE AND FAULT REPORT =====\n");
+
+    for (int i = 0; i < count; i++) {
+        Equipment *e = &equipment[i];
+
+        if (e->maintenanceDate < todayDate()) {
+            overdue++;
+            printf("\nOVERDUE: %s (ID %d)\n", e->name, e->id);
+        }
+
+        if (e->faultOpen) {
+            faults++;
+            printf("OPEN FAULT: %s - %s\n", e->name, e->fault);
+        }
+
+        if (strcmp(e->status, "Out of Service") == 0)
+            outOfService++;
+    }
+
+    printf("\nTotal equipment: %d\n", count);
+    printf("Overdue maintenance: %d\n", overdue);
+    printf("Open faults: %d\n", faults);
+    printf("Out of service: %d\n", outOfService);
+}
+
+int main(void) {
+    loadRecords();
+
+    int choice;
+
+    do {
+        printf("\n===== BIOMEDICAL EQUIPMENT MANAGEMENT =====\n");
+        printf("1. Register equipment\n");
+        printf("2. List all equipment\n");
+        printf("3. Search equipment\n");
+        printf("4. Record or update fault\n");
+        printf("5. Update equipment status\n");
+        printf("6. Schedule maintenance\n");
+        printf("7. Sort by priority\n");
+        printf("8. Generate maintenance and fault reports\n");
+        printf("0. Exit\n");
+
+        choice = readNumber("Enter choice: ");
+
+        switch (choice) {
+            case 1: registerEquipment(); break;
+            case 2: listEquipment(); break;
+            case 3: searchEquipment(); break;
+            case 4: updateFault(); break;
+            case 5: updateStatus(); break;
+            case 6: scheduleMaintenance(); break;
+            case 7: sortByPriority(); break;
+            case 8: generateReports(); break;
+            case 0: printf("Exiting system.\n"); break;
+            default: printf("Invalid menu choice.\n");
+        }
+    } while (choice != 0);
+
+    return 0;
+}
